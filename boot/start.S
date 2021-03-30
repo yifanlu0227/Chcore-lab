@@ -21,12 +21,12 @@ primary:
 	bl 	arm64_elX_to_el1
 
 	/* Prepare stack pointer and jump to C. */
-	adr 	x0, boot_cpu_stack
-	add 	x0, x0, #0x1000
-	mov 	sp, x0
+	adr 	x0, boot_cpu_stack 	/* 读入数组boot_cpu_stack地址,init_c.c中有定义 */
+	add 	x0, x0, #0x1000 	/* 栈由高地址向低地址增长，故用加法，相当于给栈分配了4096字节 */
+	mov 	sp, x0				/* 设置栈指针寄存器 */
 
 	bl 	init_c
 
-	/* Should never be here */
+	/* Should never be herse */
 	b	.
 END_FUNC(_start)
