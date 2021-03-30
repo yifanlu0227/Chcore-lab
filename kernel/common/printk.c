@@ -122,7 +122,7 @@ static int printk_write_num(char **out, long long i, int base, int sign,
 	
 	s=print_buf+PRINT_BUF_LEN;
 	*s='\0';
-	while(u>0){
+	while(u>0){ 
 		s--;
 		t=u%base;
 		if(t<=9){
