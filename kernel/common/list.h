@@ -28,6 +28,7 @@ static inline void init_list_head(struct list_head *list)
 
 static inline void list_add(struct list_head *new, struct list_head *head)
 {
+	// 把 new 插入到 head 后面
 	new->next = head->next;
 	new->prev = head;
 	head->next->prev = new;

@@ -11,7 +11,7 @@
 #define BUDDY_PAGE_SIZE     (0x1000)
 #define BUDDY_MAX_ORDER     (14UL)
 
-/* `struct page` is the metadata of one physical 4k page. */
+/* `struct page` is the metadata of one physical 4k page. */ /* Meta data! */
 struct page {
 	/* Free list */
 	struct list_head node;

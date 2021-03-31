@@ -62,6 +62,7 @@ static struct page *get_buddy_chunk(struct phys_mem_pool *pool,
 	 * relationship between buddies.
 	 */
 #define BUDDY_PAGE_SIZE_ORDER (12)
+	// 通过一个异或操作，得到伙伴块的起始地址。很巧妙，地址遇到0的不会变，遇到1的就会变
 	buddy_chunk_addr = chunk_addr ^
 	    (1UL << (order + BUDDY_PAGE_SIZE_ORDER));
 
@@ -124,9 +125,34 @@ struct page *buddy_get_pages(struct phys_mem_pool *pool, u64 order)
 static struct page *merge_page(struct phys_mem_pool *pool, struct page *page)
 {
 	// <lab2>
+	struct page *buddy_chunk = get_buddy_chunk(pool,page);
+	if(buddy_chunk==NULL || buddy_chunk->allocate=1 || page->order==BUDDY_MAX_ORDER-1 || buddy_chunk->order!=page->order){
+		return page;
+	}
 
-	struct page *merge_page = NULL;
-	return merge_page;
+	/* merge */
+	/* delete the buddy chunk and original chunk from its free list */
+	list_del(&buddy_chunk->node);
+	pool->free_lists[buddy_chunk->order].nr_free--;
+
+	list_del(&page->node);
+	pool->free_lists[page->order].nr_free--;
+
+
+	/*choose lower address to continue merge*/
+	if((u64)page_to_virt(pool,buddy_chunk)<(u64)(page_to_virt(pool,page))){
+		buddy_chunk->order++;
+		list_add(&buddy_chunk->node,&pool->free_lists[buddy_chunk->order].free_list);
+		pool->free_lists[buddy_chunk->order].nr_free++;
+		return merge_page(pool,buddy_chunk);
+	}else{
+		page->order++;
+		list_add(&page->node,&pool->free_lists[page->order].free_list);
+		pool->free_lists[page->order].nr_free++;
+		return merge_page(pool,page);
+	}
+
+
 	// </lab2>
 }
 
@@ -140,7 +166,24 @@ static struct page *merge_page(struct phys_mem_pool *pool, struct page *page)
 void buddy_free_pages(struct phys_mem_pool *pool, struct page *page)
 {
 	// <lab2>
+	struct page *head = page;
+	/* set */
+	for(int i=0;i < (1<<page->order);i++){
+		head->allocated = 0;
+		head++;
+	}
 
+	list_add(&page->node,&pool->free_lists[page->order].free_list) // new,head
+	pool->free_lists[page->order].nr_free++;
+
+	head = merge_page(pool,page);
+	int order = head->order;
+
+	/* modify the order field at one time, notice merge_page returned head pages's order is always correct */
+	for(int i=0;i<(1<<order);i++){
+		head->order = order;
+		head++;
+	}
 	// </lab2>
 }
 
