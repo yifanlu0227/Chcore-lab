@@ -1,7 +1,6 @@
 #include <common/util.h>
 #include <common/macro.h>
 #include <common/kprint.h>
-#include <stdio.h>
 
 #include "buddy.h"
 
@@ -156,7 +155,6 @@ struct page *buddy_get_pages(struct phys_mem_pool *pool, u64 order)
 		page = split_page(pool,order,page);
 		list_del(&page->node);
 		pool->free_lists[page->order].nr_free--;
-		struct page* head=page;
 	}
 
 	struct page *head = page;

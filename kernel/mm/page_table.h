@@ -23,6 +23,7 @@
 
 /* Read-write permission. */
 #define AARCH64_PTE_AP_HIGH_RW_EL0_RW     (1)
+#define AARCH64_PTE_AP_HIGH_RW_EL0_NORW   (2)  // 不可访问 
 #define AARCH64_PTE_AP_HIGH_RO_EL0_RO     (3)
 
 /* X: execution permission. U: unprivileged. P: privileged. */

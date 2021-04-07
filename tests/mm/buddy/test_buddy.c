@@ -126,8 +126,7 @@ void test_buddy(void)
 
 	nget = buddy_num_free_page(&global_mem);
 	ncheck = npages / powl(2, BUDDY_MAX_ORDER - 1);
-	printf("nget is %d\n",nget); 
-	printf("ncheck is %d\n",ncheck);
+
 	mu_check(nget == ncheck);
 
 	/* alloc 2-pages for $npages/2 times */
