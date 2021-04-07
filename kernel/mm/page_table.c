@@ -44,11 +44,15 @@ static int set_pte_flags(pte_t * entry, vmr_prop_t flags, int kind)
 {
 	if (flags & VMR_WRITE)
 		entry->l3_page.AP = AARCH64_PTE_AP_HIGH_RW_EL0_RW;
+	else if(kind==KERNEL_PTE)
+		entry->l3_page.AP = AARCH64_PTE_AP_HIGH_RW_EL0_NORW;
 	else
 		entry->l3_page.AP = AARCH64_PTE_AP_HIGH_RO_EL0_RO;
 
 	if (flags & VMR_EXEC)
 		entry->l3_page.UXN = AARCH64_PTE_UX;
+	else if(kind==KERNEL_PTE)
+		entry->l3_page.UXN = AARCH64_PTE_UXN;
 	else
 		entry->l3_page.UXN = AARCH64_PTE_UXN;
 
@@ -110,7 +114,7 @@ static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 		BUG_ON(1);
 	}
 
-	entry = &(cur_ptp->ent[index]);
+	entry = &(cur_ptp->ent[index]); 
 	if (IS_PTE_INVALID(entry->pte)) {
 		if (alloc == false) {
 			return -ENOMAPPING;
@@ -137,7 +141,7 @@ static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 		}
 	}
 	*next_ptp = (ptp_t *) GET_NEXT_PTP(entry);
-	*pte = entry;
+	*pte = entry; // "pte" (points to next_ptp) in "cur_ptp"
 	if (IS_PTE_TABLE(entry->pte))
 		return NORMAL_PTP;
 	else
@@ -162,6 +166,26 @@ static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 int query_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t * pa, pte_t ** entry)
 {
 	// <lab2>
+	ptp_t *cur_ptp = (ptp_t *) pgtbl;
+	ptp_t *next_ptp;
+	int level = 0;
+	while(level<4){
+		int ret = get_next_ptp(cur_ptp,level,va,&next_ptp,entry,0);
+		if(ret<0)
+			return ret;
+		if(ret == BLOCK_PTP){
+			if(level==1){
+				*pa = ((paddr_t) (*entry)->l1_block.pfn<<L1_INDEX_SHIFT) + GET_VA_OFFSET_L1(va);
+			} else if(level==2){
+				*pa = ((paddr_t) (*entry)->l2_block.pfn<<L2_INDEX_SHIFT) + GET_VA_OFFSET_L2(va);
+			} else {
+				return -1;
+			}
+		}
+		cur_ptp = next_ptp;
+		level++;
+	}
+	*pa = ((paddr_t)((*entry)->l3_page.pfn)<<L3_INDEX_SHIFT) + GET_VA_OFFSET_L3(va);
 
 	// </lab2>
 	return 0;
@@ -181,13 +205,40 @@ int query_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t * pa, pte_t ** entry)
  * to get the each level page table entries. Read type pte_t carefully
  * and it is convenient for you to call set_pte_flags to set the page
  * permission bit. Don't forget to call flush_tlb at the end of this function 
+ * 用于将虚拟地址映射到一块物理地址上
  */
 int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
 		       size_t len, vmr_prop_t flags)
 {
-	// <lab2>
+	pa = ROUND_DOWN(pa,PAGE_SIZE);
+	va = ROUND_DOWN(va,PAGE_SIZE);
+	len = ROUND_UP(len,PAGE_SIZE);
+	for(int i=0;i<len/PAGE_SIZE;i++){
+		ptp_t *cur_ptp = (ptp_t *) pgtbl;
+		ptp_t *next_ptp;
+		pte_t *entry;
+		int level = 0;
+		while(level<3){
+			// alloc = 1 all the way
+			int ret = get_next_ptp(cur_ptp,level,va,&next_ptp,&entry,1);
+			if(ret<0)
+				return ret;
+			if(ret==BLOCK_PTP)
+				return -1;
+			cur_ptp = next_ptp;
+			level++;
+		}
+		u32 index = GET_L3_INDEX(va);
+		entry = &(next_ptp->ent[index]);
+		entry->l3_page.is_valid = 1;
+		entry->l3_page.is_page = 1;
+		entry->l3_page.pfn = pa>>PAGE_SHIFT;
 
-	// </lab2>
+		set_pte_flags(entry,flags,flags & KERNEL_PT ? KERNEL_PTE:USER_PTE);
+		va += PAGE_SIZE;
+		pa += PAGE_SIZE;
+	}
+	flush_tlb();
 	return 0;
 }
 
@@ -202,12 +253,43 @@ int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
  * Hint: invoke get_next_ptp to get each level page table, don't 
  * forget the corner case that the virtual address is not mapped.
  * call flush_tlb() at the end of function
- * 
+ * 取消这块虚拟地址到映射
  */
 int unmap_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, size_t len)
 {
 	// <lab2>
+	for(int i=0;i<len/PAGE_SIZE;i++){
+		pte_t *entry;
+		ptp_t *cur_ptp = (ptp_t *) pgtbl;
+		ptp_t *next_ptp;
 
+		int level = 0;
+		int delete = 0;
+		while(level<3){
+			int ret = get_next_ptp(cur_ptp,level,va,&next_ptp,&entry,0);
+			if(ret==-ENOMAPPING)
+				break;
+			if(ret<0)
+				break;
+			if(ret == BLOCK_PTP){
+				delete = 1;
+				/* is_valid all the same in different types */
+				/* change is_valid flag to disable the page entry */
+				entry->table.is_valid = 0;
+				break;
+			}
+			cur_ptp = next_ptp;
+			level++;
+		}
+		// finally delete the 4k page
+		if(!delete){
+			u32 index = GET_L3_INDEX(va);
+			entry = &(next_ptp->ent[index]);
+			entry->l3_page.is_valid = 0;
+		}
+		va += PAGE_SIZE;
+	}
+	flush_tlb();
 	// </lab2>
 	return 0;
 }

@@ -29,7 +29,11 @@ int stack_backtrace()
 {
 	printk("Stack backtrace:\n");
 
-	// Your code here.
+	u64 fp = read_fp();  // 当前 FP 寄存器的值
+	while(*(u64 *)fp!=0){
+		printk("LR  %lx  FP %lx  Args %lx %lx %lx %lx %lx\n",*((u64 *)(*(u64 *)fp) + 1), *(u64 *)fp, *((u64 *)(*(u64 *)fp) - 2),*((u64 *)(*(u64 *)fp) - 3),*((u64 *)(*(u64 *)fp) - 4),*((u64 *)(*(u64 *)fp) - 5),*((u64 *)(*(u64 *)fp) - 6));
+		fp = *(u64 *)fp; 
+	}
 
 	return 0;
 }
