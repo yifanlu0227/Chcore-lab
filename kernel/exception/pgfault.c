@@ -88,30 +88,17 @@ int handle_trans_fault(struct vmspace *vmspace, vaddr_t fault_addr)
 	 */
 	vmr = find_vmr_for_va(vmspace, fault_addr);
 	if(vmr == NULL){
-		kinfo("handle_trans_fault find_vmr_for_va failed\n");
 		return -ENOMAPPING;
 	}
-
 	pmo = vmr->pmo;
 	if(pmo->type != PMO_ANONYM){
 		return -ENOMAPPING;
 	}
-	/* notice here we don't update the pmo's start paddr */
-	/* and we don't use radix to manage the physical memory */
-	/* which means we can't mamage the physical memory and use the start paddr */
-	/* if the type is PMO_ANONYM */
-	void* page = get_pages(0);
-	if(page == NULL){
-		kinfo("handle_trans_fault get_pages failed\n");
-		return -ENOMAPPING;
-	}
 
-	memset((void *)page, 0, PAGE_SIZE);
-	pa = (paddr_t)virt_to_phys((vaddr_t) page);
+	pa = (paddr_t) virt_to_phys(kmalloc(pmo->size));
+	pmo->start = pa;
 
-	fault_addr = ROUND_DOWN(fault_addr, PAGE_SIZE);
-	int ret = map_range_in_pgtbl(vmspace->pgtbl, fault_addr, pa, PAGE_SIZE, vmr->perm);
-	if(ret < 0){
+	if(map_range_in_pgtbl(vmspace->pgtbl, vmr->start, pa, pmo->size, vmr->perm) < 0){
 		return -ENOMAPPING;
 	}
 
