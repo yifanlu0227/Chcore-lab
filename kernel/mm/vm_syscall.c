@@ -328,6 +328,7 @@ u64 sys_handle_brk(u64 addr)
 	/*
 	 * Lab3: Your code here
 	 * The sys_handle_brk syscall modifies the top address of heap to addr.
+	 * 用户线程将使用sys_handle_brk创建或扩展用户堆。通过这一系统调用，当前进程的堆将被扩大至虚拟地址 addr
 	 *
 	 * If addr is 0, this function should initialize the heap, implemeted by:
 	 * 1. Create a new pmo with size 0 and type PMO_ANONYM.
@@ -347,11 +348,46 @@ u64 sys_handle_brk(u64 addr)
 	 * top.
 	 *
 	 */
+	if(addr==0){
+		pmo = obj_alloc(TYPE_PMO,sizeof(*pmo));
+		if(!pmo){
+			retval = -ENOMEM;
+			goto error;
+		}
+		pmo_init(pmo,PMO_ANONYM,0,0);
+		int pmo_cap = cap_alloc(current_process,pmo,0);
+		if(pmo_cap<0){
+			retval = -EINVAL;
+			goto error;
+		}
+		vmr = init_heap_vmr(vmspace,vmspace->user_current_heap,pmo);
+		if(vmr==NULL){
+			retval = -EINVAL;
+			goto error;
+		}
+		vmspace->heap_vmr = vmr;
+		retval = vmspace->user_current_heap;
+	}
+	else if(addr>(vmspace->user_current_heap+vmspace->heap_vmr->size)){
+		vmr = vmspace->heap_vmr;
+		pmo = vmr->pmo;
 
+		/* update the pmo's and vmr's size */
+		int new_size = ROUND_UP((addr - vmspace->user_current_heap), PAGE_SIZE);
+		pmo->size = new_size;
+		vmr->size = new_size;
+
+		retval = addr;		
+	}
+	else if(addr<(vmspace->user_current_heap+vmspace->heap_vmr->size)){
+		retval = -EINVAL;
+		goto error;
+	}
 	/*
 	 * return origin heap addr on failure;
 	 * return new heap addr on success.
 	 */
+error:
 	obj_put(vmspace);
 	return retval;
 }
